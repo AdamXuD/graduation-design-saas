@@ -6,15 +6,15 @@ const props = defineProps<{
 </script>
 
 <template>
-  <div class="item group" :class="new RegExp(`^${props.path}`).test($route.path) ? 'focus' : ''">
+  <div class="group" :class="new RegExp(`^${props.path}`).test($route.path) ? 'focus' : ''">
     <router-link
-      class="h-[96px] flex flex-col items-center justify-center group-[.focus]:bg-[#efefef]"
+      class="h-full w-full flex flex-col items-center justify-center group-[.focus]:bg-white"
       :to="path"
     >
-      <el-icon :size="28" class="icon text-[#efefef] group-[.focus]:text-[#003264]">
+      <el-icon :size="28" class="icon text-white group-[.focus]:text-theme">
         <slot></slot>
       </el-icon>
-      <div class="label text-[#efefef] group-[.focus]:text-[#003264]">{{ props.label }}</div>
+      <div class="label text-white group-[.focus]:text-theme">{{ props.label }}</div>
     </router-link>
   </div>
 </template>

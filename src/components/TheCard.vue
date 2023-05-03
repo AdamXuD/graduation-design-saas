@@ -1,7 +1,7 @@
 <script setup lang="ts"></script>
 
 <template>
-  <div class="card border border-[#eaeaea] rounded shadow flex flex-col">
+  <div class="card border border-border rounded shadow flex flex-col">
     <div class="card-header">
       <slot name="header"></slot>
     </div>

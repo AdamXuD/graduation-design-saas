@@ -1,7 +1,20 @@
 <script setup lang="ts">
-import { tasks } from '@/fakeData'
-import { ElMessage } from 'element-plus'
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watchEffect } from 'vue'
+import { timeFormat } from '@/hooks'
+import { useTokenStore } from '@/stores/token'
+import { Plus } from '@element-plus/icons-vue'
+import DialogEditHomeworkStudent from '@/components/dialogs/DialogEditHomeworkStudent.vue'
+import DialogEditHomeworkTeacher from '@/components/dialogs/DialogEditHomeworkTeacher.vue'
+import DialogCheckHomework from '@/components/dialogs/DialogCheckHomework.vue'
+import type { Lesson } from '@/types/lesson'
+import type { Task } from '@/types/task'
+import type { TaskStatus } from '@/types/task_status'
+import { deleteHomework, getLessonTasks, putHomeworkEnd } from '@/api/lesson'
+import { ElMessage, ElMessageBox } from 'element-plus'
+
+const props = defineProps<{
+  lesson: Lesson
+}>()
 
 const filterItems = [
   {
@@ -25,19 +38,37 @@ const filterItems = [
     value: 'expired'
   }
 ]
+
+const { isStudent, isTeacher } = useTokenStore()
+
 const filterActive = ref('all')
 
-const homeworkList = computed(() => {
-  if (filterActive.value === 'uncompleted') {
-    return tasks.filter((item) => item.status === 0)
-  } else if (filterActive.value === 'completed') {
-    return tasks.filter((item) => item.status === 1)
-  } else if (filterActive.value === 'checked') {
-    return tasks.filter((item) => item.status === 2)
-  } else if (filterActive.value === 'expired') {
-    return tasks.filter((item) => item.status === 3)
+const taskList = reactive<Task[]>([])
+const taskStatusList = reactive<TaskStatus[]>([])
+
+const updateData = () => {
+  getLessonTasks(props.lesson.id).then((res) => {
+    taskList.length = 0
+    taskList.push(...res.tasks)
+    taskStatusList.length = 0
+    if (res.statuses) {
+      taskStatusList.push(...res.statuses)
+    }
+  })
+}
+watchEffect(() => {
+  if (props.lesson.id < 0) return
+  updateData()
+})
+
+const filterList = computed(() => {
+  if (filterActive.value === 'all') {
+    return taskList
   } else {
-    return tasks
+    const resTaskId = taskStatusList
+      .filter((item) => item.status === filterActive.value)
+      .map((item) => item.task_id)
+    return taskList.filter((item) => resTaskId.includes(item.id))
   }
 })
 
@@ -45,226 +76,259 @@ const onFilterItemClicked = (value: string) => {
   filterActive.value = value
 }
 
-const judgeImage = (filename: string) => {
-  const suffix = `(bmp|jpg|png|tif|gif|pcx|tga|exif|fpx|svg|psd|cdr|pcd|dxf|ufo|eps|ai|raw|WMF|webp|jpeg)`
-  const regular = new RegExp(`.*.${suffix}`)
-  return regular.test(filename)
-}
-
-const timeFormat = (time: number) => {
-  const date = new Date(time * 1000)
-  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
-}
-
-const judgeStatus = (status: number) => {
-  if (status === 0) {
-    return '未完成'
-  } else if (status === 1) {
-    return '已完成'
-  } else if (status === 2) {
-    return '已批改'
-  } else if (status === 3) {
-    return '已逾期'
+const judgeStatus = (status: string) => {
+  switch (status) {
+    case 'uncompleted':
+      return '未完成'
+    case 'completed':
+      return '已完成'
+    case 'checked':
+      return '已批改'
+    case 'expired':
+      return '已截止'
+    default:
+      return ''
   }
 }
 
-const judgeStatusColor = (status: number) => {
-  if (status === 0) {
-    return 'bg-[#E6A23C]'
-  } else if (status === 1) {
-    return 'bg-[#409EFF]'
-  } else if (status === 2) {
-    return 'bg-[#67C23A]'
-  } else if (status === 3) {
-    return 'bg-[#F56C6C]'
+const judgeStatusColor = (status: string) => {
+  switch (status) {
+    case 'uncompleted':
+      return 'bg-warning'
+    case 'completed':
+      return 'bg-normal'
+    case 'checked':
+      return 'bg-success'
+    case 'expired':
+      return 'bg-danger'
+    default:
+      return ''
   }
 }
 
-const expandedStatus = reactive<{ [key: string]: boolean }>({})
-const toggleExpandedStatus = (id: string) => {
+const getStatus = (taskId: number) => {
+  return taskStatusList.find((item) => item.task_id === taskId)
+}
+
+const expandedStatus = reactive<{ [key: number]: boolean }>({})
+const toggleExpandedStatus = (id: number) => {
   expandedStatus[id] = !expandedStatus[id]
 }
 
-const editing = ref('')
-const textEdit = ref('')
-const attachment = ref<string[]>([])
-const onEditBtnClicked = (event: { stopPropagation: () => void }, id: string) => {
-  editing.value = id
-  expandedStatus[id] = true
-  textEdit.value = tasks.find((item) => item.task_id === id)?.text || ''
-  attachment.value = tasks.find((item) => item.task_id === id)?.files || []
-  event.stopPropagation()
+const isEditHomeworkStudentDialogVisible = ref(false)
+const editHomeworkStudentModel = reactive({
+  task_id: -1,
+  detail: {
+    status: '',
+    text: '',
+    files: [] as {
+      filename: string
+      url: string
+    }[]
+  }
+})
+const onEditHomeworkStudentBtnClicked = (taskId: number) => {
+  const task = taskList.find((item) => item.id === taskId)
+  if (!task) return
+  const status = taskStatusList.find((item) => item.task_id === taskId)
+  if (!status) return
+  editHomeworkStudentModel.task_id = task.id
+  editHomeworkStudentModel.detail.status = status.status || 'uncompleted'
+  editHomeworkStudentModel.detail.text = status.text || ''
+  editHomeworkStudentModel.detail.files = JSON.parse(status.files) || []
+  isEditHomeworkStudentDialogVisible.value = true
 }
-const onAddAttachmentBtnClicked = () => {}
-const onSubmitBtnClicked = (id: string) => {
-  id
-  ElMessage.success('提交成功')
-  editing.value = ''
+
+const isEditHomeworkTeacherDialogVisible = ref(false)
+const editHomeworkTeacherModel = reactive({
+  id: -1,
+  title: '',
+  description: '',
+  deadline: 0
+})
+const onEditHomeworkTeacherBtnClicked = (id?: number) => {
+  const task = taskList.find((item) => item.id === id)
+  if (!task) return
+  editHomeworkTeacherModel.id = task.id || -1
+  editHomeworkTeacherModel.title = task.title || ''
+  editHomeworkTeacherModel.description = task.description || ''
+  editHomeworkTeacherModel.deadline = task.deadline * 1000 || new Date().getTime()
+  isEditHomeworkTeacherDialogVisible.value = true
 }
-const onCancelBtnClicked = (id: string) => {
-  id
-  editing.value = ''
+const onNewHomeworkTeacherBtnClicked = () => {
+  editHomeworkTeacherModel.id = -1
+  editHomeworkTeacherModel.title = ''
+  editHomeworkTeacherModel.description = ''
+  editHomeworkTeacherModel.deadline = new Date().getTime()
+  isEditHomeworkTeacherDialogVisible.value = true
+}
+
+const isCheckHomeWorkDialogVisible = ref(false)
+const checkingTaskId = ref(-1)
+const onCheckHomeWorkBtnClicked = (task_id: number) => {
+  checkingTaskId.value = task_id
+  isCheckHomeWorkDialogVisible.value = true
+}
+
+const onDeleteHomeworkBtnClicked = (task_id: number) => {
+  ElMessageBox.confirm('确认删除该作业吗，该操作无法恢复？', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  })
+    .then(() => deleteHomework(props.lesson.id, task_id))
+    .then(() => {
+      ElMessage.success('删除成功')
+      updateData()
+    })
+    .catch(() => {})
+}
+
+const onEndHomeworkBtnClicked = (task_id: number) => {
+  ElMessageBox.confirm('确认结束该作业吗，该操作后所有学生将无法提交作业？', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  })
+    .then(() => putHomeworkEnd(props.lesson.id, task_id))
+    .then(() => {
+      ElMessage.success('结束成功')
+      updateData()
+    })
+    .catch(() => {})
 }
 </script>
 
 <template>
-  <div class="p-[16px]">
-    <div class="filter-btn flex flex-row border-b border-[#eaeaea] pb-[16px] mb-[16px]">
+  <div class="p-4">
+    <div class="filter-btn flex flex-row border-b border-border pb-4 mb-4" v-if="isStudent()">
       <div
         v-for="item in filterItems"
         :key="item.value"
-        class="flex flex-row items-center h-[24px] px-[8px] mr-[8px] text-[14px] rounded-full cursor-pointer"
-        :class="filterActive === item.value ? 'bg-theme text-[#fff]' : 'bg-[#eaeaea]'"
+        class="flex flex-row items-center h-6 px-2 mr-2 text-sm rounded-full cursor-pointer"
+        :class="filterActive === item.value ? 'bg-theme text-white' : 'bg-fill'"
         @click="onFilterItemClicked(item.value)"
       >
         {{ item.label }}
       </div>
     </div>
+    <div class="filter-btn flex flex-row border-b border-border pb-4 mb-4" v-if="isTeacher()">
+      <el-button type="primary" :icon="Plus" @click="onNewHomeworkTeacherBtnClicked" class="w-full">
+        新建
+      </el-button>
+    </div>
     <ul>
       <li
-        v-for="item in homeworkList"
-        :key="item.task_id"
-        class="flex flex-col px-[8px] border-b border-[#eaeaea]"
+        v-for="item in filterList"
+        :key="item.id"
+        class="flex flex-col px-2 border-b border-border"
       >
         <div
-          class="py-[16px] flex flex-row justify-between cursor-pointer"
-          @click="toggleExpandedStatus(item.task_id)"
+          class="py-4 flex flex-row justify-between cursor-pointer"
+          @click="toggleExpandedStatus(item.id)"
         >
-          <div class="flex flex-row items-center">
-            <h5 class="font-bold mr-[8px]">{{ item.title }}</h5>
-            <div class="flex flex-row items-center text-[12px]">
-              <div class="type py-[2px] px-[8px] mr-[8px] rounded-full overflow-hidden bg-[#ddd]">
-                作业
+          <div class="flex flex-row">
+            <h5 class="font-bold mr-4">{{ item.title }}</h5>
+            <div class="flex flex-row items-center text-xs" v-if="isStudent()">
+              <div
+                class="status py-0.5 px-2 mr-2 rounded-full overflow-hidden text-white"
+                :class="judgeStatusColor(getStatus(item.id)?.status || 'uncompleted')"
+              >
+                {{ judgeStatus(getStatus(item.id)?.status || 'uncompleted') }}
               </div>
               <div
-                class="status py-[2px] px-[8px] mr-[8px] rounded-full overflow-hidden text-[#fff]"
-                :class="judgeStatusColor(item.status)"
+                class="score py-0.5 px-2 mr-2 rounded-full overflow-hidden bg-normal text-white"
+                v-if="getStatus(item.id)?.status === 'checked'"
               >
-                {{ judgeStatus(item.status) }}
-              </div>
-              <div
-                class="score py-[2px] px-[8px] mr-[8px] rounded-full overflow-hidden bg-[#409eff] text-[#fff]"
-                v-if="item.status === 2"
-              >
-                得分：{{ item.score }}
+                得分：{{ getStatus(item.id)?.score }}
               </div>
             </div>
-            <p class="text-[12px] opacity-75">
-              <span class="mr-[8px]">截止时间：{{ timeFormat(item.deadline) }}</span>
-            </p>
           </div>
           <div class="flex flex-row items-center">
-            <div
-              class="w-[24px] h-[24px] mr-[16px] bg-[#409Eff] text-[#fff] rounded-full overflow-hidden flex flex-row justify-center items-center cursor-pointer"
-              v-if="new Date(item.deadline * 1000).getTime() > new Date().getTime()"
-              @click="onEditBtnClicked($event, item.task_id)"
-            >
-              <el-icon :size="16">
-                <Edit />
-              </el-icon>
-            </div>
-
-            <el-icon :size="20" class="opacity-75">
-              <ArrowRight v-if="!expandedStatus[item.task_id]" />
+            <el-icon :size="20" class="text-regular">
+              <ArrowRight v-if="!expandedStatus[item.id]" />
               <ArrowDown v-else />
             </el-icon>
           </div>
         </div>
-        <div class="detail" v-if="expandedStatus[item.task_id]">
-          <div class="requirement mb-[16px] text-[14px]">
-            <p>作业要求：</p>
-            <p>（作业要求略）</p>
-          </div>
-          <div
-            class="finish-detail mb-[16px]"
-            v-if="!(item.status === 0 || item.task_id === editing)"
-          >
-            <p class="text-[14px]">文字描述：</p>
-            <p class="whitespace-pre-wrap mb-[8px] text-[14px]">
-              <span v-if="item.text && item.text.length">
-                {{ item.text }}
-              </span>
-              <span v-else> （无文字描述） </span>
+        <div class="detail" v-if="expandedStatus[item.id]">
+          <div class="flex mb-4">
+            <p class="text-xs text-primary mr-4">
+              创建时间：
+              <span>{{ timeFormat(item.created_time) }}</span>
             </p>
-            <ul class="attachment mb-[16px] flex flex-row items-center">
-              <li class="text-[14px]">附件：</li>
-              <li v-if="item.files.length === 0" class="text-[14px]">（无附件）</li>
-              <li
-                v-else
-                v-for="it in item.files"
-                :key="it"
-                class="w-[96px] h-[96px] mr-[8px] border border-[#eaeaea] rounded-md overflow-hidden"
-              >
-                <el-image
-                  v-if="judgeImage(it)"
-                  :src="it"
-                  :preview-src-list="[it]"
-                  fit="cover"
-                  class="w-full h-full"
-                ></el-image>
-                <a
-                  v-else
-                  :href="it"
-                  target="_blank"
-                  class="h-full w-full flex items-center justify-center"
-                >
-                  <el-icon :size="48" class="opacity-50">
-                    <Document />
-                  </el-icon>
-                </a>
-              </li>
-            </ul>
+            <p class="text-xs text-primary">
+              截止时间：
+              <span>{{ timeFormat(item.deadline) }}</span>
+            </p>
           </div>
-          <div class="edit-detail" v-if="editing === item.task_id">
-            <p class="text-[14px]">文字描述：</p>
-            <el-input
-              v-if="editing === item.task_id"
-              type="textarea"
-              :rows="4"
-              v-model="textEdit"
-              class="mb-[16px]"
-            ></el-input>
-            <ul class="attachment mb-[16px] flex flex-row items-center">
-              <li class="text-[14px]">附件：</li>
-              <li v-if="item.files.length === 0" class="text-[14px]">（无附件）</li>
-              <li
-                v-else
-                v-for="it in item.files"
-                :key="it"
-                class="w-[96px] h-[96px] mr-[8px] border border-[#eaeaea] rounded-md overflow-hidden"
-              >
-                <el-image
-                  v-if="judgeImage(it)"
-                  :src="it"
-                  fit="cover"
-                  class="w-full h-full"
-                ></el-image>
-                <div v-else class="h-full w-full flex items-center justify-center">
-                  <el-icon :size="48" class="opacity-50">
-                    <Document />
-                  </el-icon>
-                </div>
-              </li>
-              <li
-                class="w-[96px] h-[96px] mr-[8px] border border-[#eaeaea] rounded-md overflow-hidden flex justify-center items-center cursor-pointer"
-                @click="onAddAttachmentBtnClicked"
-              >
-                <el-icon :size="48" class="opacity-50">
-                  <Plus />
-                </el-icon>
-              </li>
-            </ul>
-            <div class="btn-group mb-[16px] flex flex-row justify-end">
-              <el-button type="primary" class="mr-[8px]" @click="onSubmitBtnClicked(item.task_id)">
-                提交
-              </el-button>
-              <el-button @click="onCancelBtnClicked(item.task_id)">取消</el-button>
-            </div>
+          <div class="requirement mb-4 text-sm">
+            <p class="text-sm text-primary mb-1">作业要求：</p>
+            <p>{{ item.description }}</p>
+          </div>
+          <div class="mb-4">
+            <el-button
+              type="primary"
+              size="small"
+              @click="onEditHomeworkStudentBtnClicked(item.id)"
+              v-if="isStudent()"
+            >
+              完成详情
+            </el-button>
+            <el-button
+              type="primary"
+              size="small"
+              @click="onEditHomeworkTeacherBtnClicked(item.id)"
+              v-if="isTeacher()"
+            >
+              编辑作业
+            </el-button>
+            <el-button
+              type="primary"
+              size="small"
+              @click="onCheckHomeWorkBtnClicked(item.id)"
+              v-if="isTeacher()"
+            >
+              批改作业
+            </el-button>
+            <el-button
+              type="danger"
+              size="small"
+              @click="onDeleteHomeworkBtnClicked(item.id)"
+              v-if="isTeacher()"
+            >
+              删除
+            </el-button>
+            <el-button
+              type="danger"
+              size="small"
+              @click="onEndHomeworkBtnClicked(item.id)"
+              v-if="isTeacher()"
+            >
+              截止提交
+            </el-button>
           </div>
         </div>
       </li>
     </ul>
   </div>
+  <dialog-edit-homework-student
+    :lesson-id="lesson.id"
+    v-model="isEditHomeworkStudentDialogVisible"
+    :data="editHomeworkStudentModel"
+    @update-data="updateData"
+  ></dialog-edit-homework-student>
+  <dialog-edit-homework-teacher
+    :lesson-id="lesson.id"
+    v-model="isEditHomeworkTeacherDialogVisible"
+    :data="editHomeworkTeacherModel"
+    @update-data="updateData"
+  ></dialog-edit-homework-teacher>
+  <dialog-check-homework
+    :lesson-id="lesson.id"
+    v-model="isCheckHomeWorkDialogVisible"
+    :task-id="checkingTaskId"
+  ></dialog-check-homework>
 </template>
 
 <style scoped></style>
