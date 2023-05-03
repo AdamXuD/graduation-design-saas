@@ -3,7 +3,7 @@ import { reactive, ref, watch, watchEffect } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import type { Class } from '@/types/class'
 import { getClassList, postClass, putClass, deleteClass, getProfessionList } from '@/api/admin'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 
 const pageSize = ref(10)
 const currentPage = ref(1)
@@ -68,32 +68,36 @@ const onDeleteBtnClicked = (id: number) => {
     )
     .catch(() => {})
 }
+const formRef = ref<FormInstance>()
+const formRules = reactive<FormRules>({
+  grade: [{ required: true, message: '年级不允许为空', trigger: 'blur' }],
+  name: [
+    { required: true, message: '班级名称不允许为空', trigger: 'blur' },
+    { max: 32, message: '班级名称不允许超过32个字符', trigger: 'blur' }
+  ],
+  profession_id: [{ required: true, message: '请选择所属专业', trigger: 'change' }]
+})
 const onClassEditDialogCommitBtnClicked = () => {
-  if (classModel.name.length === 0) {
-    ElMessage.error('班级名称不允许为空')
-    return
-  }
-  if (!classModel.profession_id) {
-    ElMessage.error('请选择所属专业')
-    return
-  }
-  if (classModel.id === -1) {
-    postClass({
-      grade: classModel.grade,
-      profession_id: classModel.profession_id,
-      name: classModel.name
-    }).then(() => {
-      ElMessage.success('新建成功')
-      isClassEditDialogVisible.value = false
-      return fetchData()
-    })
-  } else {
-    putClass(classModel).then(() => {
-      ElMessage.success('修改成功')
-      isClassEditDialogVisible.value = false
-      return fetchData()
-    })
-  }
+  formRef.value?.validate((valid) => {
+    if (!valid) return
+    if (classModel.id === -1) {
+      postClass({
+        grade: classModel.grade,
+        profession_id: classModel.profession_id,
+        name: classModel.name
+      }).then(() => {
+        ElMessage.success('新建成功')
+        isClassEditDialogVisible.value = false
+        return fetchData()
+      })
+    } else {
+      putClass(classModel).then(() => {
+        ElMessage.success('修改成功')
+        isClassEditDialogVisible.value = false
+        return fetchData()
+      })
+    }
+  })
 }
 const onClassEditDialogCancelBtnClicked = () => {
   isClassEditDialogVisible.value = false
@@ -150,8 +154,8 @@ const professionSelectorRemoteMethod = (keyword: string) => {
     :title="classModel.id === -1 ? '新建' : '编辑'"
     class="w-5/6 sm:w-1/2"
   >
-    <el-form :model="classModel">
-      <el-form-item label="年级">
+    <el-form :model="classModel" ref="formRef" :rules="formRules">
+      <el-form-item label="年级" prop="grade">
         <el-input-number
           v-model="classModel.grade"
           :min="1900"
@@ -159,7 +163,7 @@ const professionSelectorRemoteMethod = (keyword: string) => {
           controls-position="right"
         />
       </el-form-item>
-      <el-form-item label="专业">
+      <el-form-item label="专业" prop="profession_id">
         <el-select
           v-model="classModel.profession_id"
           filterable
@@ -178,7 +182,7 @@ const professionSelectorRemoteMethod = (keyword: string) => {
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="名称">
+      <el-form-item label="名称" prop="name">
         <el-input v-model="classModel.name"></el-input>
       </el-form-item>
     </el-form>

@@ -3,7 +3,7 @@ import { reactive, ref, watch, watchEffect } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import type { Teacher } from '@/types/teacher'
 import { deleteTeacher, getTeacherList, postTeacher, putTeacher } from '@/api/admin'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { MoreFilled } from '@element-plus/icons-vue'
 
 const pageSize = ref(10)
@@ -82,39 +82,54 @@ const onDeleteBtnClicked = (id: string) => {
     )
     .catch(() => {})
 }
+const formRef = ref<FormInstance>()
+const formRules = reactive<FormRules>({
+  name: [
+    { required: true, message: '姓名不允许为空', trigger: 'blur' },
+    { max: 16, message: '姓名长度不允许超过16个字符', trigger: 'blur' }
+  ],
+  new_id: [
+    { required: true, message: '工号不允许为空', trigger: 'blur' },
+    { min: 10, max: 10, message: '工号长度必须为10位', trigger: 'blur' }
+  ],
+  email: [
+    { max: 255, message: '邮箱长度不允许超过255个字符', trigger: 'blur' },
+    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' }
+  ],
+  phone: [{ min: 11, max: 11, message: '手机号长度必须为11位', trigger: 'blur' }]
+})
 const onTeacherEditDialogCommitBtnClicked = () => {
-  if (teacherModel.name.length === 0 && teacherModel.new_id.length === 0) {
-    ElMessage.error('老师姓名及工号不允许为空')
-    return
-  }
-  if (teacherModel.old_id === '') {
-    postTeacher({
-      id: teacherModel.new_id,
-      name: teacherModel.name,
-      email: teacherModel.email,
-      phone: teacherModel.phone,
-      introduction: teacherModel.introduction,
-      avatar: teacherModel.avatar
-    }).then(() => {
-      ElMessage.success('新建成功')
-      isTeacherEditDialogVisible.value = false
-      return fetchData()
-    })
-  } else {
-    putTeacher(teacherModel.old_id, {
-      id: teacherModel.new_id,
-      name: teacherModel.name,
-      email: teacherModel.email,
-      phone: teacherModel.phone,
-      introduction: teacherModel.introduction,
-      avatar: teacherModel.avatar,
-      reset_password: teacherModel.password_reset
-    }).then(() => {
-      ElMessage.success('修改成功')
-      isTeacherEditDialogVisible.value = false
-      return fetchData()
-    })
-  }
+  formRef.value?.validate((valid) => {
+    if (!valid) return
+    if (teacherModel.old_id === '') {
+      postTeacher({
+        id: teacherModel.new_id,
+        name: teacherModel.name,
+        email: teacherModel.email,
+        phone: teacherModel.phone,
+        introduction: teacherModel.introduction,
+        avatar: teacherModel.avatar
+      }).then(() => {
+        ElMessage.success('新建成功')
+        isTeacherEditDialogVisible.value = false
+        return fetchData()
+      })
+    } else {
+      putTeacher(teacherModel.old_id, {
+        id: teacherModel.new_id,
+        name: teacherModel.name,
+        email: teacherModel.email,
+        phone: teacherModel.phone,
+        introduction: teacherModel.introduction,
+        avatar: teacherModel.avatar,
+        reset_password: teacherModel.password_reset
+      }).then(() => {
+        ElMessage.success('修改成功')
+        isTeacherEditDialogVisible.value = false
+        return fetchData()
+      })
+    }
+  })
 }
 const onTeacherEditDialogCancelBtnClicked = () => {
   isTeacherEditDialogVisible.value = false
@@ -195,26 +210,26 @@ const onTeacherEditDialogCancelBtnClicked = () => {
     :title="teacherModel.old_id === '' ? '新建' : '编辑'"
     class="w-5/6 sm:w-1/2"
   >
-    <el-form :model="teacherModel" label-width="80">
-      <el-form-item label="ID">
-        <el-input v-model="teacherModel.new_id" maxlength="10" show-word-limit></el-input>
+    <el-form :model="teacherModel" label-width="80" :rules="formRules" ref="formRef">
+      <el-form-item label="ID" prop="new_id">
+        <el-input v-model="teacherModel.new_id" :maxlength="10" show-word-limit></el-input>
       </el-form-item>
-      <el-form-item label="姓名">
+      <el-form-item label="姓名" prop="name">
         <el-input v-model="teacherModel.name"></el-input>
       </el-form-item>
-      <el-form-item label="邮箱">
+      <el-form-item label="邮箱" prop="email">
         <el-input v-model="teacherModel.email"></el-input>
       </el-form-item>
-      <el-form-item label="手机">
+      <el-form-item label="手机" prop="phone">
         <el-input v-model="teacherModel.phone"></el-input>
       </el-form-item>
-      <el-form-item label="头像">
+      <el-form-item label="头像" prop="avatar">
         <el-input v-model="teacherModel.avatar"></el-input>
       </el-form-item>
-      <el-form-item label="自我介绍">
+      <el-form-item label="自我介绍" prop="introduction">
         <el-input v-model="teacherModel.introduction" :rows="2" type="textarea"></el-input>
       </el-form-item>
-      <el-form-item label="重置密码">
+      <el-form-item label="重置密码" prop="password_reset">
         <el-switch v-model="teacherModel.password_reset"></el-switch>
       </el-form-item>
     </el-form>

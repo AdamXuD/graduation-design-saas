@@ -3,7 +3,7 @@ import { reactive, ref, watch, watchEffect } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import type { Profession } from '@/types/profession'
 import { getProfessionList, postProfession, putProfession, deleteProfession } from '@/api/admin'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 
 const pageSize = ref(10)
 const currentPage = ref(1)
@@ -61,24 +61,30 @@ const onDeleteBtnClicked = (id: number) => {
     )
     .catch(() => {})
 }
+const formRef = ref<FormInstance>()
+const formRules = reactive<FormRules>({
+  name: [
+    { required: true, message: '专业名称不允许为空', trigger: 'blur' },
+    { min: 1, max: 20, message: '专业名称长度在 1 到 20 个字符', trigger: 'blur' }
+  ]
+})
 const onProfessionEditDialogCommitBtnClicked = () => {
-  if (professionModel.name.length === 0) {
-    ElMessage.error('专业名称不允许为空')
-    return
-  }
-  if (professionModel.id === -1) {
-    postProfession({ name: professionModel.name }).then(() => {
-      ElMessage.success('新建成功')
-      isProfessionEditDialogVisible.value = false
-      return fetchData()
-    })
-  } else {
-    putProfession(professionModel).then(() => {
-      ElMessage.success('修改成功')
-      isProfessionEditDialogVisible.value = false
-      return fetchData()
-    })
-  }
+  formRef.value?.validate((valid) => {
+    if (!valid) return
+    if (professionModel.id === -1) {
+      postProfession({ name: professionModel.name }).then(() => {
+        ElMessage.success('新建成功')
+        isProfessionEditDialogVisible.value = false
+        return fetchData()
+      })
+    } else {
+      putProfession(professionModel).then(() => {
+        ElMessage.success('修改成功')
+        isProfessionEditDialogVisible.value = false
+        return fetchData()
+      })
+    }
+  })
 }
 const onProfessionEditDialogCancelBtnClicked = () => {
   isProfessionEditDialogVisible.value = false
@@ -113,8 +119,8 @@ const onProfessionEditDialogCancelBtnClicked = () => {
     :title="professionModel.id === -1 ? '新建' : '编辑'"
     class="w-5/6 sm:w-1/2"
   >
-    <el-form :model="professionModel">
-      <el-form-item label="名称">
+    <el-form :model="professionModel" ref="formRef" :rules="formRules">
+      <el-form-item label="名称" prop="name">
         <el-input v-model="professionModel.name"></el-input>
       </el-form-item>
     </el-form>

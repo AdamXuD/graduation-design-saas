@@ -12,7 +12,7 @@ import {
   putLessonClassList,
   getClassList
 } from '@/api/admin'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { MoreFilled } from '@element-plus/icons-vue'
 
 const pageSize = ref(10)
@@ -88,40 +88,49 @@ const onDeleteBtnClicked = (id: number) => {
     )
     .catch(() => {})
 }
+const formRef = ref<FormInstance>()
+const formRules = reactive<FormRules>({
+  title: [
+    { required: true, message: '请输入课程名称', trigger: 'blur' },
+    { min: 2, max: 32, message: '标题长度在 2 到 32 个字符', trigger: 'blur' }
+  ],
+  teacher_id: [{ required: true, message: '请选择教师', trigger: 'change' }],
+  year: [{ required: true, message: '请选择学年', trigger: 'change' }],
+  term: [{ required: true, message: '请选择学期', trigger: 'change' }]
+})
 const onLessonEditDialogCommitBtnClicked = () => {
-  if (lessonModel.title.length === 0) {
-    ElMessage.error('课程标题不允许为空')
-    return
-  }
-  try {
-    JSON.parse(lessonModel.notice)
-    JSON.parse(lessonModel.courseware)
-  } catch (e) {
-    ElMessage.error('课件或公告非法，强烈不建议在此修改课件或公告元数据。')
-    return
-  }
-  if (lessonModel.id === -1) {
-    postLesson({
-      thumbnail: lessonModel.thumbnail,
-      title: lessonModel.title,
-      teacher_id: lessonModel.teacher_id,
-      year: lessonModel.year,
-      term: lessonModel.term,
-      is_over: lessonModel.is_over,
-      notice: lessonModel.notice,
-      courseware: lessonModel.courseware
-    }).then(() => {
-      ElMessage.success('新建成功')
-      isLessonEditDialogVisible.value = false
-      return fetchData()
-    })
-  } else {
-    putLesson(lessonModel).then(() => {
-      ElMessage.success('修改成功')
-      isLessonEditDialogVisible.value = false
-      return fetchData()
-    })
-  }
+  formRef.value?.validate((valid) => {
+    if (!valid) return
+    try {
+      JSON.parse(lessonModel.notice)
+      JSON.parse(lessonModel.courseware)
+    } catch (e) {
+      ElMessage.error('课件或公告非法，强烈不建议在此修改课件或公告元数据。')
+      return
+    }
+    if (lessonModel.id === -1) {
+      postLesson({
+        thumbnail: lessonModel.thumbnail,
+        title: lessonModel.title,
+        teacher_id: lessonModel.teacher_id,
+        year: lessonModel.year,
+        term: lessonModel.term,
+        is_over: lessonModel.is_over,
+        notice: lessonModel.notice,
+        courseware: lessonModel.courseware
+      }).then(() => {
+        ElMessage.success('新建成功')
+        isLessonEditDialogVisible.value = false
+        return fetchData()
+      })
+    } else {
+      putLesson(lessonModel).then(() => {
+        ElMessage.success('修改成功')
+        isLessonEditDialogVisible.value = false
+        return fetchData()
+      })
+    }
+  })
 }
 const onLessonEditDialogCancelBtnClicked = () => {
   isLessonEditDialogVisible.value = false
@@ -245,14 +254,14 @@ const classSelectorRemoteMethod = (keyword: string) => {
     :title="lessonModel.id === -1 ? '新建' : '编辑'"
     class="w-5/6 sm:w-1/2"
   >
-    <el-form :model="lessonModel" label-width="80">
-      <el-form-item label="标题">
+    <el-form :model="lessonModel" label-width="80" ref="formRef" :rules="formRules">
+      <el-form-item label="标题" prop="title">
         <el-input v-model="lessonModel.title"></el-input>
       </el-form-item>
-      <el-form-item label="缩略图">
+      <el-form-item label="缩略图" prop="thumbnail">
         <el-input v-model="lessonModel.thumbnail"></el-input>
       </el-form-item>
-      <el-form-item label="教师">
+      <el-form-item label="教师" prop="teacher_id">
         <el-select
           v-model="lessonModel.teacher_id"
           filterable
@@ -271,7 +280,7 @@ const classSelectorRemoteMethod = (keyword: string) => {
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="年度">
+      <el-form-item label="年度" prop="year">
         <el-input-number
           v-model="lessonModel.year"
           :min="1900"
@@ -279,17 +288,17 @@ const classSelectorRemoteMethod = (keyword: string) => {
           controls-position="right"
         />
       </el-form-item>
-      <el-form-item label="学期">
+      <el-form-item label="学期" prop="term">
         <el-input-number v-model="lessonModel.term" :min="1" :max="2" controls-position="right" />
       </el-form-item>
-      <el-form-item label="是否结课">
+      <el-form-item label="是否结课" prop="is_over">
         <el-switch v-model="lessonModel.is_over"></el-switch>
       </el-form-item>
-      <el-form-item label="公告（元数据）" error="若您不了解该项则不建议修改">
+      <el-form-item label="公告（元数据）" prop="notice" error="若您不了解该项则不建议修改">
         <el-input v-model="lessonModel.notice" :rows="2" type="textarea"></el-input>
       </el-form-item>
-      <el-form-item label="课件（元数据）" error="若您不了解该项则不建议修改">
-        <el-input v-model="lessonModel.notice" :rows="2" type="textarea"></el-input>
+      <el-form-item label="课件（元数据）" prop="courseware" error="若您不了解该项则不建议修改">
+        <el-input v-model="lessonModel.courseware" :rows="2" type="textarea"></el-input>
       </el-form-item>
     </el-form>
     <template #footer>

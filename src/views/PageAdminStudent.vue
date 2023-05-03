@@ -3,7 +3,7 @@ import { reactive, ref, watch, watchEffect } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import type { Student } from '@/types/student'
 import { getStudentList, postStudent, putStudent, deleteStudent, getClassList } from '@/api/admin'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { MoreFilled } from '@element-plus/icons-vue'
 
 const pageSize = ref(10)
@@ -48,7 +48,7 @@ const onNewBtnClicked = () => {
     old_id: '',
     new_id: '',
     name: '',
-    class_id: -1,
+    class_id: undefined,
     email: '',
     phone: '',
     introduction: '',
@@ -84,41 +84,57 @@ const onDeleteBtnClicked = (id: string) => {
     )
     .catch(() => {})
 }
+const formRef = ref<FormInstance>()
+const formRules = reactive<FormRules>({
+  name: [
+    { required: true, message: '姓名不允许为空', trigger: 'blur' },
+    { max: 16, message: '姓名长度不允许超过16个字符', trigger: 'blur' }
+  ],
+  new_id: [
+    { required: true, message: '学号不允许为空', trigger: 'blur' },
+    { min: 10, max: 10, message: '学号必须为10位', trigger: 'blur' }
+  ],
+  class_id: [{ required: true, message: '班级不允许为空', trigger: 'blur' }],
+  email: [
+    { max: 255, message: '邮箱长度不允许超过255个字符', trigger: 'blur' },
+    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' }
+  ],
+  phone: [{ min: 11, max: 11, message: '手机号长度必须为11位', trigger: 'blur' }]
+})
 const onStudentEditDialogCommitBtnClicked = () => {
-  if (studentModel.name.length === 0 && studentModel.new_id.length === 0) {
-    ElMessage.error('学生姓名及工号不允许为空')
-    return
-  }
-  if (studentModel.old_id === '') {
-    postStudent({
-      id: studentModel.new_id,
-      name: studentModel.name,
-      class_id: studentModel.class_id,
-      email: studentModel.email,
-      phone: studentModel.phone,
-      introduction: studentModel.introduction,
-      avatar: studentModel.avatar
-    }).then(() => {
-      ElMessage.success('新建成功')
-      isStudentEditDialogVisible.value = false
-      return fetchData()
-    })
-  } else {
-    putStudent(studentModel.old_id, {
-      id: studentModel.new_id,
-      name: studentModel.name,
-      class_id: studentModel.class_id,
-      email: studentModel.email,
-      phone: studentModel.phone,
-      introduction: studentModel.introduction,
-      avatar: studentModel.avatar,
-      reset_password: studentModel.password_reset
-    }).then(() => {
-      ElMessage.success('修改成功')
-      isStudentEditDialogVisible.value = false
-      return fetchData()
-    })
-  }
+  formRef.value?.validate((valid) => {
+    if (!valid) return
+    if (studentModel.old_id === '') {
+      postStudent({
+        id: studentModel.new_id,
+        name: studentModel.name,
+        class_id: studentModel.class_id,
+        email: studentModel.email,
+        phone: studentModel.phone,
+        introduction: studentModel.introduction,
+        avatar: studentModel.avatar
+      }).then(() => {
+        ElMessage.success('新建成功')
+        isStudentEditDialogVisible.value = false
+        return fetchData()
+      })
+    } else {
+      putStudent(studentModel.old_id, {
+        id: studentModel.new_id,
+        name: studentModel.name,
+        class_id: studentModel.class_id,
+        email: studentModel.email,
+        phone: studentModel.phone,
+        introduction: studentModel.introduction,
+        avatar: studentModel.avatar,
+        reset_password: studentModel.password_reset
+      }).then(() => {
+        ElMessage.success('修改成功')
+        isStudentEditDialogVisible.value = false
+        return fetchData()
+      })
+    }
+  })
 }
 const onStudentEditDialogCancelBtnClicked = () => {
   isStudentEditDialogVisible.value = false
@@ -220,14 +236,19 @@ const classSelectorRemoteMethod = (keyword: string) => {
     :title="studentModel.old_id === '' ? '新建' : '编辑'"
     class="w-5/6 sm:w-1/2"
   >
-    <el-form :model="studentModel" label-width="80">
-      <el-form-item label="ID">
-        <el-input v-model="studentModel.new_id" maxlength="10" show-word-limit></el-input>
+    <el-form :model="studentModel" label-width="80" :rules="formRules" ref="formRef">
+      <el-form-item label="ID" prop="new_id">
+        <el-input
+          v-model="studentModel.new_id"
+          :minlength="10"
+          :maxlength="10"
+          show-word-limit
+        ></el-input>
       </el-form-item>
-      <el-form-item label="姓名">
+      <el-form-item label="姓名" prop="name">
         <el-input v-model="studentModel.name"></el-input>
       </el-form-item>
-      <el-form-item label="班级">
+      <el-form-item label="班级" prop="class_id">
         <el-select
           v-model="studentModel.class_id"
           filterable
@@ -246,17 +267,19 @@ const classSelectorRemoteMethod = (keyword: string) => {
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="邮箱">
+      <el-form-item label="邮箱" prop="email">
         <el-input v-model="studentModel.email"></el-input>
       </el-form-item>
-      <el-form-item label="手机"> <el-input v-model="studentModel.phone"></el-input> </el-form-item>
-      <el-form-item label="头像">
+      <el-form-item label="手机" prop="phone">
+        <el-input v-model="studentModel.phone"></el-input>
+      </el-form-item>
+      <el-form-item label="头像" prop="avatar">
         <el-input v-model="studentModel.avatar"></el-input>
       </el-form-item>
-      <el-form-item label="自我介绍">
+      <el-form-item label="自我介绍" prop="introduction">
         <el-input v-model="studentModel.introduction" :rows="2" type="textarea"></el-input>
       </el-form-item>
-      <el-form-item label="重置密码">
+      <el-form-item label="重置密码" prop="password_reset">
         <el-switch v-model="studentModel.password_reset"></el-switch>
       </el-form-item>
     </el-form>
