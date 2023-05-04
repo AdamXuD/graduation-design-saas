@@ -25,7 +25,7 @@ const props = defineProps<{
 }>()
 
 const formatTime = (time: number) => {
-  const date = new Date(time)
+  const date = new Date(time * 1000)
   const hh = date.getHours().toString().padStart(2, '0')
   const mm = date.getMinutes().toString().padStart(2, '0')
   const ss = date.getSeconds().toString().padStart(2, '0')
@@ -70,7 +70,7 @@ const renderEventDesc = (data: { type: string; data: unknown }) => {
         student: StudentBrief
         order: number
       }
-      str = `学生${student.name}(${student.student_id})完成签到，您是第${order}个完成签到的同学。`
+      str = `学生${student.name}(${student.student_id})完成签到，是第${order}个完成签到的同学。`
       break
     }
     case 'taketheroll': {
@@ -150,6 +150,9 @@ const interval = useIntervalFn(
       record.length = 0
       record.push(...res.classroom)
       isClassroomOpening.value = true
+    } else {
+      record.length = 0
+      isClassroomOpening.value = false
     }
 
     if (res.qrcode) {
@@ -387,7 +390,7 @@ const exportAttendanceResult = () => {
           签到
         </el-button>
       </div>
-      <div class="flex items-center" v-if="isClassroomOpening">
+      <div class="flex items-center" v-if="recordData.length !== 0">
         <el-button type="primary" class="mr-3" size="small" @click="onAttendanceResultBtnClicked">
           签到结果
         </el-button>
@@ -421,7 +424,7 @@ const exportAttendanceResult = () => {
             <Warning />
           </el-icon>
         </div>
-        <el-table :data="isClassroomOpening ? recordData : []">
+        <el-table :data="recordData">
           <el-table-column label="时间" width="180">
             <template #default="{ row }">
               <el-icon><Timer /></el-icon>
