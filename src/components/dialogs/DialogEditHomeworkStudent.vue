@@ -63,6 +63,7 @@ const onSubmitBtnClicked = async () => {
     ElMessage.warning('该作业已经被检查或截止，无法修改。')
     return
   }
+  ElMessage.info('正在提交，请稍后。')
   let request: Promise<
     {
       filename: string

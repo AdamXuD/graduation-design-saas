@@ -18,7 +18,8 @@ export function putHomeworkObject(
     url: '/oss/public/homework/' + task_id,
     method: 'put',
     data: formData,
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000
   })
 }
 
@@ -42,7 +43,8 @@ export function putCoursewareObject(
     url: '/oss/public/courseware/' + lesson_id,
     method: 'put',
     data: formData,
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000
   })
 }
 
@@ -69,7 +71,8 @@ export function putCloudObjects(
     method: 'put',
     params: { path },
     data: formData,
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 600000
   })
 }
 

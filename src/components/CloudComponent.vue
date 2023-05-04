@@ -282,6 +282,7 @@ const fileUploadRequest = (option: { file: File }) => {
     ElMessage.error('同名文件或文件夹已存在')
     return Promise.reject()
   }
+  ElMessage.info('正在上传，请稍后。')
   return putCloudObjects(props.area, props.userId, dir.value, [option.file]).then((res) => {
     ElMessage.success('上传成功')
     updateData()

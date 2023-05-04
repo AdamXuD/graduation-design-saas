@@ -117,6 +117,7 @@ const onLeafEditCommitBtnClicked = () => {
     ElMessage.error('标题不能为空。')
     return
   }
+  ElMessage.info('正在提交，请稍后。')
   if (leafEditModel.leaf && fileUpdateModel.old) {
     const src = {
       filename: fileUpdateModel.old.filename,
