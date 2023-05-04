@@ -8,7 +8,6 @@ import { file2URL } from '@/hooks'
 import { putLessonCourseware } from '@/api/lesson'
 import { deleteCoursewareObject, putCoursewareObject } from '@/api/oss'
 import VuePdfEmbed from 'vue-pdf-embed'
-import { watch } from 'vue'
 
 interface ThirdLevel {
   title: string
@@ -250,14 +249,7 @@ const onFileInputChanged = (e: Event) => {
   target.value = ''
 }
 
-const pdfElem = ref<{ render: () => void }>()
 const isCoursewareFullScreen = ref(false)
-watch(isCoursewareFullScreen, () => {
-  if (pdfElem.value) {
-    pdfElem.value.render()
-  }
-})
-
 const onCoursewareBackBtnClicked = () => {
   isCoursewareFullScreen.value = false
   activeItem.value = null
@@ -401,15 +393,7 @@ const onCoursewareBackBtnClicked = () => {
         </li>
       </ul>
     </div>
-    <component
-      :is="isCoursewareFullScreen ? 'el-dialog' : 'div'"
-      v-model="isCoursewareFullScreen"
-      :fullscreen="isCoursewareFullScreen"
-      :show-close="false"
-      title="课件详情"
-      class="flex flex-col h-full"
-      v-else
-    >
+    <div class="flex flex-col h-full" v-else>
       <div class="flex flex-row justify-between w-full mb-4">
         <div class="flex flex-row items-center">
           <div
@@ -446,7 +430,7 @@ const onCoursewareBackBtnClicked = () => {
           v-else-if="activeItem.type === 'image'"
         ></el-image>
         <div v-else-if="activeItem.type === 'pdf'" class="w-3/4 h-full mx-auto">
-          <vue-pdf-embed :source="activeItem.src.url" ref="pdfElem" />
+          <vue-pdf-embed :source="activeItem.src.url" />
         </div>
         <div
           class="text-xs text-primary h-40 w-full flex items-center justify-center bg-fill rounded-lg"
@@ -473,8 +457,53 @@ const onCoursewareBackBtnClicked = () => {
           。
         </p>
       </div>
-    </component>
+    </div>
   </div>
+  <el-dialog v-if="activeItem" v-model="isCoursewareFullScreen" :fullscreen="true" title="课件详情">
+    <div class="flex-1 overflow-y-auto flex flex-col items-center justify-center mb-4 scroll">
+      <video
+        :src="activeItem.src.url"
+        autoplay
+        controls
+        class="w-full rounded-md overflow-hidden"
+        v-if="activeItem.type === 'video'"
+      ></video>
+      <el-image
+        :src="activeItem.src.url"
+        fit="contain"
+        :preview-src-list="[activeItem.src.url]"
+        class="w-full h-full rounded-md overflow-hidden"
+        v-else-if="activeItem.type === 'image'"
+      ></el-image>
+      <div v-else-if="activeItem.type === 'pdf'" class="w-3/4 h-full mx-auto">
+        <vue-pdf-embed :source="activeItem.src.url" />
+      </div>
+      <div
+        class="text-xs text-primary h-40 w-full flex items-center justify-center bg-fill rounded-lg"
+        v-else-if="activeItem.type === 'other'"
+      >
+        <p>
+          该文件暂时无法预览，请选择
+          <el-button type="primary" size="small">
+            <a :href="activeItem.src.url" target="_blank">下载</a>
+          </el-button>
+          后查看。
+        </p>
+      </div>
+    </div>
+    <div
+      class="text-sm mx-2"
+      v-if="activeItem.downloadable && activeItem.type !== 'other' && isStudent()"
+    >
+      <p>
+        老师已开放该课件的下载，请点此进行
+        <el-button type="primary" size="small">
+          <a :href="activeItem.src.url" target="_blank">下载</a>
+        </el-button>
+        。
+      </p>
+    </div>
+  </el-dialog>
   <el-dialog
     v-model="isNodeEditDialogVisible"
     :title="nodeEditModel.node ? '编辑' : '新建'"
