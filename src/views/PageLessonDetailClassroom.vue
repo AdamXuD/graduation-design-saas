@@ -1,18 +1,24 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref, watchEffect } from 'vue'
 import QRCode from 'qrcode'
 import { useIntervalFn } from '@vueuse/shared'
 import { useTokenStore } from '@/stores/token'
 import {
   getClassroom,
+  getClassroomPreData,
   putClassroomBegin,
   putClassroomEnd,
   getClassroomRoll,
-  putClassroomAttendance
+  putClassroomAttendance,
+  getClassroomHistory
 } from '@/api/lesson'
+import type { Student } from '@/types/student'
 import type { Lesson } from '@/types/lesson'
+import type { LessonRecord, ParsedRecordData } from '@/types/lesson_record'
 import { ElMessage } from 'element-plus'
 import jsQR from 'jsqr'
+import { timeFormat } from '@/hooks'
+import type { Class } from '@/types/class'
 
 const props = defineProps<{
   lesson: Lesson
@@ -102,14 +108,38 @@ const cameraReady = ref(false)
 const video = document.createElement('video')
 const canvasElem = ref<HTMLCanvasElement>()
 
-const record = reactive<
-  {
-    type: string
-    time: number
-    data: unknown
-  }[]
->([])
+const record = reactive<ParsedRecordData[]>([])
 const qrcodeUrl = ref('')
+
+const students = reactive<Student[]>([])
+const classes = reactive<Class[]>([])
+const historyRecords = reactive<LessonRecord[]>([])
+
+const showingHistoryId = ref<number>(-1)
+const history = reactive<ParsedRecordData[]>([])
+const historyIdOptionsData = computed(() => {
+  return [
+    { label: '当前课堂', value: -1 },
+    ...historyRecords.map((item) => {
+      return {
+        label: timeFormat(item.time),
+        value: item.id
+      }
+    })
+  ]
+})
+const onHistorySelectChanged = () => {
+  if (showingHistoryId.value === -1) {
+    history.length = 0
+  } else {
+    getClassroomHistory(props.lesson.id, showingHistoryId.value).then((res) => {
+      history.length = 0
+      history.push(...JSON.parse(res.history.data))
+    })
+  }
+}
+
+const recordData = computed(() => (showingHistoryId.value !== -1 ? history : record))
 
 const interval = useIntervalFn(
   async () => {
@@ -128,9 +158,24 @@ const interval = useIntervalFn(
       qrcodeUrl.value = ''
     }
   },
-  8000,
+  5000,
   { immediate: true, immediateCallback: true }
 )
+
+const getPreData = () => {
+  getClassroomPreData(props.lesson.id).then((res) => {
+    students.length = 0
+    students.push(...res.students)
+    historyRecords.length = 0
+    historyRecords.push(...res.histories)
+    classes.length = 0
+    classes.push(...res.classes)
+  })
+}
+watchEffect(() => {
+  if (props.lesson.id < 0) return
+  getPreData()
+})
 
 const isClassBeginDialogShow = ref(false)
 const classBeginModel = reactive({
@@ -177,6 +222,10 @@ const qrcodeCapture = () => {
     canvas.stroke()
   }
   const tick = (onQRCodeFound: (res: string | PromiseLike<string>) => void) => {
+    if (!isAttendanceDialogShow.value) {
+      mediaStream && mediaStream.getTracks()[0].stop()
+      video.src = ''
+    }
     if (video.readyState === video.HAVE_ENOUGH_DATA && canvasElem.value) {
       canvasElem.value.height = video.videoHeight
       canvasElem.value.width = video.videoWidth
@@ -221,10 +270,15 @@ const isAttendanceDialogShow = ref(false)
 const onAttendanceBtnClicked = async () => {
   if (isStudent()) {
     qrcodeCapture().then((res) => {
-      putClassroomAttendance(props.lesson.id, res).then(() => {
-        ElMessage.success('签到成功')
-        isAttendanceDialogShow.value = false
-      })
+      putClassroomAttendance(props.lesson.id, res)
+        .then(() => {
+          ElMessage.success('签到成功')
+          isAttendanceDialogShow.value = false
+        })
+        .catch(() => {
+          ElMessage.error('签到失败')
+          isAttendanceDialogShow.value = false
+        })
     })
   }
   isAttendanceDialogShow.value = true
@@ -260,28 +314,97 @@ const onRollCommitBtnClicked = () => {
       ElMessage.error('抽签失败')
     })
 }
+
+const isAttendanceResultDialogShow = ref(false)
+const attendedStudent = computed<(StudentBrief & { class_name: string })[]>(() => {
+  const attendanceData = recordData.value.filter((item) => item.type === 'attendance')
+  return attendanceData.map((item) => {
+    const student = students.find(
+      (i) => i.id === (item.data as { student: StudentBrief }).student.student_id
+    ) as Student
+    const class_ = classes.find((i) => i.id === student.class_id) as Class
+    return {
+      student_id: student.id,
+      class_name: class_.name,
+      name: student.name
+    }
+  })
+})
+const unattendedStudent = computed<(StudentBrief & { class_name: string })[]>(() => {
+  return students
+    .filter((item) => !attendedStudent.value.find((i) => item.id === i.student_id))
+    .map((item) => {
+      const class_ = classes.find((i) => i.id === item.class_id) as Class
+      return {
+        student_id: item.id,
+        class_name: class_.name,
+        name: item.name
+      }
+    })
+})
+const onAttendanceResultBtnClicked = () => {
+  isAttendanceResultDialogShow.value = true
+}
+const exportAttendanceResult = () => {
+  const textList = []
+  textList.push('已签到学生名单：')
+  attendedStudent.value.forEach((item) => {
+    textList.push(`${item.name}  |  ${item.class_name}  |  ${item.student_id}`)
+  })
+  textList.push('未签到学生名单：')
+  unattendedStudent.value.forEach((item) => {
+    textList.push(`${item.name}  |  ${item.class_name}  |  ${item.student_id}`)
+  })
+  const blob = new Blob([textList.join('\n')], { type: 'text/plain;charset=utf-8' })
+  let url = window.URL.createObjectURL(blob)
+  let a = document.createElement('a')
+  a.href = url
+  a.download = '签到结果.txt'
+  a.click()
+  window.URL.revokeObjectURL(a.href)
+}
 </script>
 
 <template>
   <div class="p-4">
-    <div class="flex mb-4 items-center" v-if="isTeacher()">
-      <el-switch
-        v-model="isClassroomOpening"
-        class="mr-4"
-        inline-prompt
-        active-text="上课"
-        inactive-text="下课"
-        :before-change="onSwitchChanged"
-      />
-      <div class="flex items-center" v-if="isTeacher() && isClassroomOpening">
-        <el-button type="primary" size="small" @click="onAttendanceBtnClicked"> 签到 </el-button>
-        <el-button type="primary" size="small" @click="onRollBtnClicked"> 抽签 </el-button>
+    <div class="flex mb-4 items-center">
+      <div class="flex items-center" v-if="isTeacher()">
+        <el-switch
+          v-model="isClassroomOpening"
+          class="mr-4"
+          inline-prompt
+          active-text="上课"
+          inactive-text="下课"
+          :before-change="onSwitchChanged"
+        />
+        <div class="flex items-center mr-2" v-if="isTeacher() && isClassroomOpening">
+          <el-button type="primary" size="small" @click="onAttendanceBtnClicked"> 签到 </el-button>
+          <el-button type="primary" size="small" @click="onRollBtnClicked"> 抽签 </el-button>
+        </div>
       </div>
-    </div>
-    <div class="flex mb-4 items-center" v-if="isStudent() && isClassroomOpening">
-      <el-button type="primary" class="mr-3" size="small" @click="onAttendanceBtnClicked">
-        签到
-      </el-button>
+      <div class="flex items-center mr-2" v-if="isStudent() && isClassroomOpening">
+        <el-button type="primary" class="mr-3" size="small" @click="onAttendanceBtnClicked">
+          签到
+        </el-button>
+      </div>
+      <div class="flex items-center" v-if="isClassroomOpening">
+        <el-button type="primary" class="mr-3" size="small" @click="onAttendanceResultBtnClicked">
+          签到结果
+        </el-button>
+      </div>
+      <el-select
+        v-model="showingHistoryId"
+        size="small"
+        @change="onHistorySelectChanged"
+        class="w-24"
+      >
+        <el-option
+          v-for="item in historyIdOptionsData"
+          :key="item.value"
+          :label="item.label"
+          :value="item.value"
+        />
+      </el-select>
     </div>
     <div>
       <p class="text-sm mb-4">
@@ -298,7 +421,7 @@ const onRollCommitBtnClicked = () => {
             <Warning />
           </el-icon>
         </div>
-        <el-table :data="isClassroomOpening ? record : []">
+        <el-table :data="isClassroomOpening ? recordData : []">
           <el-table-column label="时间" width="180">
             <template #default="{ row }">
               <el-icon><Timer /></el-icon>
@@ -334,11 +457,12 @@ const onRollCommitBtnClicked = () => {
     </template>
   </el-dialog>
   <el-dialog v-model="isAttendanceDialogShow" title="签到" class="w-5/6 sm:w-1/2">
-    <div class="w-full sm:w-1/2 mx-auto flex flex-col items-center" v-if="isTeacher()">
+    <div class="w-full sm:w-3/4 mx-auto flex flex-col items-center" v-if="isTeacher()">
       <el-image :src="qrcodeUrl" class="w-full"></el-image>
-      <p class="text-xs mb-2">签到二维码</p>
+      <p class="text-xs mb-2" v-if="qrcodeUrl">签到二维码</p>
+      <p class="text-xs mb-2" v-else>签到已结束</p>
     </div>
-    <div class="w-2/3 mx-auto flex flex-col items-center" v-if="isStudent()">
+    <div class="w-3/4 mx-auto flex flex-col items-center" v-if="isStudent()">
       <div v-if="cameraReady">正在初始化摄像头...</div>
       <canvas ref="canvasElem" class="w-full mb-4"></canvas>
       <p class="text-xs mb-2">二维码扫描框</p>
@@ -368,6 +492,30 @@ const onRollCommitBtnClicked = () => {
       <el-table-column prop="student_id" label="ID" width="180" />
       <el-table-column prop="name" label="Name" />
     </el-table>
+  </el-dialog>
+  <el-dialog v-model="isAttendanceResultDialogShow" title="签到结果" class="w-5/6 sm:w-1/2">
+    <div class="pb-2 mb-2 border-b border-border">
+      <div class="mb-2 text-lg">已签到名单</div>
+      <el-table :data="attendedStudent" class="h-36">
+        <el-table-column prop="student_id" label="ID" width="180" />
+        <el-table-column prop="class_name" label="Class" width="100" />
+        <el-table-column prop="name" label="Name" />
+      </el-table>
+    </div>
+    <div class="pb-2 mb-2 border-b border-border">
+      <div class="mb-2 text-lg">未签到名单</div>
+      <el-table :data="unattendedStudent" class="h-36">
+        <el-table-column prop="student_id" label="ID" width="180" />
+        <el-table-column prop="class_name" label="Class" width="100" />
+        <el-table-column prop="name" label="Name" />
+      </el-table>
+    </div>
+    <template #footer>
+      <el-button type="primary" @click="exportAttendanceResult" v-if="isTeacher()">
+        下载签到结果
+      </el-button>
+      <el-button @click="isAttendanceResultDialogShow = false">关闭</el-button>
+    </template>
   </el-dialog>
 </template>
 
