@@ -6,6 +6,7 @@ import type { Task } from '@/types/task'
 import type { TaskStatus } from '@/types/task_status'
 import type { Teacher } from '@/types/teacher'
 import type { LessonRecord } from '@/types/lesson_record'
+import type { Class } from '@/types/class'
 
 export function getLessons(): Promise<{
   lessons: LessonBrief[]
@@ -51,6 +52,7 @@ export function putLessonNotice(lessonId: number, notice: string): Promise<null>
 export function getClassroomPreData(lessonId: number): Promise<{
   students: Student[]
   histories: LessonRecord[]
+  classes: Class[]
 }> {
   return service({
     url: '/lesson/' + lessonId + '/classroom/pre-data',
@@ -62,7 +64,7 @@ export function getClassroomHistory(
   lessonId: number,
   historyId: number
 ): Promise<{
-  history: LessonRecord[]
+  history: LessonRecord
 }> {
   return service({
     url: '/lesson/' + lessonId + '/classroom/history/' + historyId,
